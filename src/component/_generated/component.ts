@@ -35,21 +35,60 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { snapshotId: string },
-        Array<any>,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          event: string;
+          payload: string;
+          receivedAt: number;
+          snapshotId: string;
+        }>,
         Name
       >;
       getRecords: FunctionReference<
         "query",
         "internal",
         { limit?: number; snapshotId: string },
-        Array<any>,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          data: string;
+          datasetId: string;
+          receivedAt: number;
+          snapshotId: string;
+        }>,
         Name
       >;
       getSnapshot: FunctionReference<
         "query",
         "internal",
         { snapshotId: string },
-        null | any,
+        null | {
+          _creationTime: number;
+          _id: string;
+          completedAt?: number;
+          customOutputFields?: string;
+          datasetId: string;
+          discoveryMode?: string;
+          errorMessage?: string;
+          format?: string;
+          inputs: string;
+          limitPerInput?: number;
+          notifyUrl?: string;
+          recordCount?: number;
+          snapshotId: string;
+          status:
+            | "pending"
+            | "running"
+            | "collecting"
+            | "digesting"
+            | "ready"
+            | "failed"
+            | "canceled";
+          totalLimit?: number;
+          triggeredAt: number;
+          webhookUrl?: string;
+        },
         Name
       >;
       handleWebhook: FunctionReference<
@@ -68,14 +107,39 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { datasetId?: string; limit?: number; status?: string },
-        Array<any>,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          completedAt?: number;
+          customOutputFields?: string;
+          datasetId: string;
+          discoveryMode?: string;
+          errorMessage?: string;
+          format?: string;
+          inputs: string;
+          limitPerInput?: number;
+          notifyUrl?: string;
+          recordCount?: number;
+          snapshotId: string;
+          status:
+            | "pending"
+            | "running"
+            | "collecting"
+            | "digesting"
+            | "ready"
+            | "failed"
+            | "canceled";
+          totalLimit?: number;
+          triggeredAt: number;
+          webhookUrl?: string;
+        }>,
         Name
       >;
       pollStatus: FunctionReference<
         "action",
         "internal",
         { brightdataApiToken: string; snapshotId: string },
-        { datasetId?: string; snapshotId: string; status: string },
+        { datasetId: string; snapshotId: string; status: string },
         Name
       >;
       scrape: FunctionReference<
@@ -87,9 +151,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           datasetId: string;
           format?: string;
           includeErrors?: boolean;
-          inputs: Array<any>;
+          inputs: Array<{ keyword?: string; url?: string }>;
         },
-        { records: Array<any>; snapshotId?: string; status: string },
+        { records: Array<string>; snapshotId?: string; status: string },
         Name
       >;
       trigger: FunctionReference<
@@ -103,13 +167,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           discoveryMode?: string;
           format?: string;
           includeErrors?: boolean;
-          inputs: Array<any>;
+          inputs: Array<{ keyword?: string; url?: string }>;
           limitPerInput?: number;
           notifyUrl?: string;
           totalLimit?: number;
           webhookUrl?: string;
         },
         { snapshotId: string; status: string },
+        Name
+      >;
+      validateIndexes: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          relationships: Array<{
+            fieldName: string;
+            indexName: string;
+            sourceTable: string;
+            targetTable: string;
+          }>;
+        },
+        null,
         Name
       >;
     };

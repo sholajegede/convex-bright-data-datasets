@@ -8,21 +8,73 @@ import {
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
 
+const statusValidator = v.union(
+  v.literal("pending"),
+  v.literal("running"),
+  v.literal("collecting"),
+  v.literal("digesting"),
+  v.literal("ready"),
+  v.literal("failed"),
+  v.literal("canceled"),
+);
+
+const relationshipValidator = v.object({
+  sourceTable: v.string(),
+  targetTable: v.string(),
+  indexName: v.string(),
+  fieldName: v.string(),
+});
+
+const snapshotValidator = v.object({
+  _id: v.id("snapshots"),
+  _creationTime: v.number(),
+  snapshotId: v.string(),
+  datasetId: v.string(),
+  status: statusValidator,
+  inputs: v.string(),
+  triggeredAt: v.number(),
+  format: v.optional(v.string()),
+  recordCount: v.optional(v.number()),
+  errorMessage: v.optional(v.string()),
+  completedAt: v.optional(v.number()),
+  notifyUrl: v.optional(v.string()),
+  webhookUrl: v.optional(v.string()),
+  discoveryMode: v.optional(v.string()),
+  limitPerInput: v.optional(v.number()),
+  totalLimit: v.optional(v.number()),
+  customOutputFields: v.optional(v.string()),
+});
+
+const recordValidator = v.object({
+  _id: v.id("records"),
+  _creationTime: v.number(),
+  snapshotId: v.string(),
+  datasetId: v.string(),
+  data: v.string(),
+  receivedAt: v.number(),
+});
+
+const deliveryLogValidator = v.object({
+  _id: v.id("deliveryLogs"),
+  _creationTime: v.number(),
+  snapshotId: v.string(),
+  event: v.string(),
+  payload: v.string(),
+  receivedAt: v.number(),
+});
+
+const inputValidator = v.object({
+  url: v.optional(v.string()),
+  keyword: v.optional(v.string()),
+});
+
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 export const upsertSnapshot = internalMutation({
   args: {
     snapshotId: v.string(),
     datasetId: v.string(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("collecting"),
-      v.literal("digesting"),
-      v.literal("ready"),
-      v.literal("failed"),
-      v.literal("canceled"),
-    ),
+    status: statusValidator,
     inputs: v.string(),
     format: v.optional(v.string()),
     recordCount: v.optional(v.number()),
@@ -59,15 +111,7 @@ export const upsertSnapshot = internalMutation({
 export const updateSnapshotStatus = internalMutation({
   args: {
     snapshotId: v.string(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("running"),
-      v.literal("collecting"),
-      v.literal("digesting"),
-      v.literal("ready"),
-      v.literal("failed"),
-      v.literal("canceled"),
-    ),
+    status: statusValidator,
     recordCount: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
     completedAt: v.optional(v.number()),
@@ -90,47 +134,9 @@ export const updateSnapshotStatus = internalMutation({
   },
 });
 
-export const insertRecords = internalMutation({
-  args: {
-    snapshotId: v.string(),
-    datasetId: v.string(),
-    records: v.array(v.string()),
-  },
-  returns: v.number(),
-  handler: async (ctx, args) => {
-    for (const record of args.records) {
-      await ctx.db.insert("records", {
-        snapshotId: args.snapshotId,
-        datasetId: args.datasetId,
-        data: record,
-        receivedAt: Date.now(),
-      });
-    }
-    return args.records.length;
-  },
-});
-
-export const logDelivery = internalMutation({
-  args: {
-    snapshotId: v.string(),
-    event: v.string(),
-    payload: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await ctx.db.insert("deliveryLogs", {
-      snapshotId: args.snapshotId,
-      event: args.event,
-      payload: args.payload,
-      receivedAt: Date.now(),
-    });
-    return null;
-  },
-});
-
 export const getSnapshotBySnapshotId = internalQuery({
   args: { snapshotId: v.string() },
-  returns: v.union(v.null(), v.any()),
+  returns: v.union(v.null(), snapshotValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("snapshots")
@@ -143,7 +149,7 @@ export const getSnapshotBySnapshotId = internalQuery({
 
 export const getSnapshot = query({
   args: { snapshotId: v.string() },
-  returns: v.union(v.null(), v.any()),
+  returns: v.union(v.null(), snapshotValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("snapshots")
@@ -158,18 +164,26 @@ export const listSnapshots = query({
     status: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
-  returns: v.array(v.any()),
+  returns: v.array(snapshotValidator),
   handler: async (ctx, args) => {
-    const q = ctx.db.query("snapshots");
     if (args.datasetId) {
-      const results = await ctx.db
+      return await ctx.db
         .query("snapshots")
         .withIndex("by_datasetId", (q) => q.eq("datasetId", args.datasetId!))
         .order("desc")
         .take(args.limit ?? 50);
-      return results;
     }
-    return await q.order("desc").take(args.limit ?? 50);
+    if (args.status) {
+      return await ctx.db
+        .query("snapshots")
+        .withIndex("by_status", (q) => q.eq("status", args.status as any))
+        .order("desc")
+        .take(args.limit ?? 50);
+    }
+    return await ctx.db
+      .query("snapshots")
+      .order("desc")
+      .take(args.limit ?? 50);
   },
 });
 
@@ -178,7 +192,7 @@ export const getRecords = query({
     snapshotId: v.string(),
     limit: v.optional(v.number()),
   },
-  returns: v.array(v.any()),
+  returns: v.array(recordValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("records")
@@ -190,7 +204,7 @@ export const getRecords = query({
 
 export const getDeliveryLogs = query({
   args: { snapshotId: v.string() },
-  returns: v.array(v.any()),
+  returns: v.array(deliveryLogValidator),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("deliveryLogs")
@@ -205,7 +219,7 @@ export const getDeliveryLogs = query({
 export const trigger = action({
   args: {
     datasetId: v.string(),
-    inputs: v.array(v.any()),
+    inputs: v.array(inputValidator),
     brightdataApiToken: v.string(),
     format: v.optional(v.string()),
     webhookUrl: v.optional(v.string()),
@@ -280,14 +294,14 @@ export const trigger = action({
 export const scrape = action({
   args: {
     datasetId: v.string(),
-    inputs: v.array(v.any()),
+    inputs: v.array(inputValidator),
     brightdataApiToken: v.string(),
     format: v.optional(v.string()),
     customOutputFields: v.optional(v.string()),
     includeErrors: v.optional(v.boolean()),
   },
   returns: v.object({
-    records: v.array(v.any()),
+    records: v.array(v.string()),
     snapshotId: v.optional(v.string()),
     status: v.string(),
   }),
@@ -308,9 +322,10 @@ export const scrape = action({
       throw new Error(`Bright Data scrape failed: ${response.status} ${await response.text()}`);
     }
 
-    const data = await response.json() as any;
+    const text = await response.text();
+    let data: any;
+    try { data = JSON.parse(text); } catch { data = {}; }
 
-    // If timed out, returns snapshot_id for polling
     if (data.snapshot_id) {
       await ctx.runMutation(internal.lib.upsertSnapshot, {
         snapshotId: data.snapshot_id,
@@ -323,14 +338,8 @@ export const scrape = action({
       return { records: [], snapshotId: data.snapshot_id, status: "running" };
     }
 
-    // Immediate result — parse NDJSON or JSON array
-    const text = await response.text().catch(() => JSON.stringify(data));
     const lines = text.trim().split("\n").filter(Boolean);
-    const records = lines.map((line) => {
-      try { return JSON.parse(line); } catch { return line; }
-    });
-
-    return { records, status: "ready" };
+    return { records: lines, status: "ready" };
   },
 });
 
@@ -342,15 +351,13 @@ export const pollStatus = action({
   returns: v.object({
     snapshotId: v.string(),
     status: v.string(),
-    datasetId: v.optional(v.string()),
+    datasetId: v.string(),
   }),
   handler: async (ctx, args) => {
     const response = await fetch(
       `https://api.brightdata.com/datasets/v3/progress/${args.snapshotId}`,
       {
-        headers: {
-          Authorization: `Bearer ${args.brightdataApiToken}`,
-        },
+        headers: { Authorization: `Bearer ${args.brightdataApiToken}` },
       }
     );
 
@@ -364,26 +371,19 @@ export const pollStatus = action({
       status: string;
     };
 
-    const status = data.status as any;
+    const validStatuses = ["ready", "failed", "canceled", "running", "collecting", "digesting", "pending"];
+    const status = validStatuses.includes(data.status) ? data.status : "running";
 
     await ctx.runMutation(internal.lib.updateSnapshotStatus, {
       snapshotId: args.snapshotId,
-      status: ["ready", "failed", "canceled", "running", "collecting", "digesting", "pending"].includes(status)
-        ? status
-        : "running",
+      status: status as any,
       completedAt: status === "ready" ? Date.now() : undefined,
-    });
-
-    await ctx.runMutation(internal.lib.logDelivery, {
-      snapshotId: args.snapshotId,
-      event: "poll_check",
-      payload: JSON.stringify(data),
     });
 
     return {
       snapshotId: args.snapshotId,
       status: data.status,
-      datasetId: data.dataset_id,
+      datasetId: data.dataset_id ?? "",
     };
   },
 });
@@ -399,9 +399,7 @@ export const cancelSnapshot = action({
       `https://api.brightdata.com/datasets/v3/snapshot/${args.snapshotId}/cancel`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${args.brightdataApiToken}`,
-        },
+        headers: { Authorization: `Bearer ${args.brightdataApiToken}` },
       }
     );
 
@@ -428,28 +426,28 @@ export const handleWebhook = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    if (args.records.length > 0) {
+    // Store each record individually for better queryability
+    for (const record of args.records) {
       await ctx.db.insert("records", {
         snapshotId: args.snapshotId,
         datasetId: args.datasetId,
-        data: JSON.stringify(args.records),
+        data: record,
         receivedAt: Date.now(),
       });
     }
 
-    await ctx.db
+    const existing = await ctx.db
       .query("snapshots")
       .withIndex("by_snapshotId", (q) => q.eq("snapshotId", args.snapshotId))
-      .first()
-      .then(async (existing) => {
-        if (existing) {
-          await ctx.db.patch(existing._id, {
-            status: "ready",
-            recordCount: (existing.recordCount ?? 0) + args.records.length,
-            completedAt: Date.now(),
-          });
-        }
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        status: "ready",
+        recordCount: (existing.recordCount ?? 0) + args.records.length,
+        completedAt: Date.now(),
       });
+    }
 
     await ctx.db.insert("deliveryLogs", {
       snapshotId: args.snapshotId,
@@ -458,6 +456,23 @@ export const handleWebhook = mutation({
       receivedAt: Date.now(),
     });
 
+    return null;
+  },
+});
+
+export const validateIndexes = mutation({
+  args: {
+    relationships: v.array(relationshipValidator),
+  },
+  returns: v.null(),
+  handler: async (_ctx, args) => {
+    for (const rel of args.relationships) {
+      if (!rel.sourceTable || !rel.targetTable || !rel.indexName || !rel.fieldName) {
+        throw new Error(
+          `Invalid relationship config: ${JSON.stringify(rel)}. All fields are required.`,
+        );
+      }
+    }
     return null;
   },
 });
