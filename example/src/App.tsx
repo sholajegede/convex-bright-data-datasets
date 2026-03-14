@@ -1,7 +1,7 @@
 import "./App.css";
 import { useAction, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 type Snapshot = {
   snapshotId: string;
@@ -40,7 +40,6 @@ function Pipeline({ status }: { status: string }) {
           const done = activeStep > step.id || (activeStep === step.id && status === "ready");
           const active = activeStep === step.id && status !== "ready";
           const dotColor = failed ? "#dc2626" : done ? "#059669" : active ? "#f97316" : "#d1d5db";
-
           return (
             <div key={step.id} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative" }}>
               {i < STEPS.length - 1 && (
@@ -131,28 +130,41 @@ function LogStream({ snapshot }: { snapshot: Snapshot | null }) {
 
 function JsonViewer({ data }: { data: unknown }) {
   const renderValue = (val: unknown, depth = 0): React.ReactElement => {
-    if (val === null) return <span style={{ color: "#6366f1" }}>null</span>;
+    if (val === null || val === undefined) return <span style={{ color: "#6366f1" }}>null</span>;
     if (typeof val === "boolean") return <span style={{ color: "#8b5cf6" }}>{String(val)}</span>;
-    if (typeof val === "number") return <span style={{ color: "#059669" }}>{val}</span>;
+    if (typeof val === "number") return <span style={{ color: "#059669", fontWeight: 600 }}>{val}</span>;
     if (typeof val === "string") {
-      if (val.startsWith("http")) return <a href={val} target="_blank" rel="noreferrer" style={{ color: "#2563eb", textDecoration: "none" }}>{`"${val}"`}</a>;
-      return <span style={{ color: "#b45309" }}>{`"${val.length > 80 ? val.slice(0, 80) + "…" : val}"`}</span>;
+      if (val.startsWith("http")) return (
+        <a href={val} target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>
+          "{val.length > 60 ? val.slice(0, 60) + "…" : val}"
+        </a>
+      );
+      return <span style={{ color: "#b45309" }}>"{val.length > 100 ? val.slice(0, 100) + "…" : val}"</span>;
     }
     if (Array.isArray(val)) {
-      if (val.length === 0) return <span style={{ color: "#6b7280" }}>[]</span>;
+      if (val.length === 0) return <span style={{ color: "#6b7280" }}>[ ]</span>;
+      if (depth > 1) return <span style={{ color: "#6b7280" }}>[{val.length} items]</span>;
       return (
-        <span>
-          <span style={{ color: "#6b7280" }}>[{val.length} items]</span>
-        </span>
+        <div style={{ marginLeft: 16 }}>
+          {val.slice(0, 5).map((item, i) => (
+            <div key={i} style={{ marginBottom: 2 }}>
+              <span style={{ color: "#9ca3af" }}>{i}: </span>{renderValue(item, depth + 1)}
+            </div>
+          ))}
+          {val.length > 5 && <div style={{ color: "#9ca3af" }}>…+{val.length - 5} more</div>}
+        </div>
       );
     }
-    if (typeof val === "object" && val !== null) {
-      const entries = Object.entries(val as Record<string, unknown>).filter(([, v]) => v !== null && v !== undefined && v !== "");
+    if (typeof val === "object") {
+      const entries = Object.entries(val as Record<string, unknown>)
+        .filter(([, v]) => v !== null && v !== undefined && v !== "");
+      if (depth > 2) return <span style={{ color: "#6b7280" }}>{"{…}"}</span>;
       return (
         <div style={{ marginLeft: depth > 0 ? 16 : 0 }}>
           {entries.map(([k, v]) => (
-            <div key={k} style={{ display: "flex", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
-              <span style={{ color: "#0f766e", fontWeight: 600, flexShrink: 0 }}>{k}:</span>
+            <div key={k} style={{ display: "flex", gap: 8, marginBottom: 4, alignItems: "flex-start" }}>
+              <span style={{ color: "#0f766e", fontWeight: 600, flexShrink: 0, minWidth: 120 }}>{k}</span>
+              <span style={{ color: "#6b7280", flexShrink: 0 }}>:</span>
               <span>{renderValue(v, depth + 1)}</span>
             </div>
           ))}
@@ -166,8 +178,8 @@ function JsonViewer({ data }: { data: unknown }) {
     <div style={{
       background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8,
       padding: "1rem", fontSize: "0.78rem",
-      fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.6,
-      maxHeight: 400, overflowY: "auto",
+      fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.7,
+      maxHeight: 420, overflowY: "auto",
     }}>
       {renderValue(data)}
     </div>
@@ -177,17 +189,31 @@ function JsonViewer({ data }: { data: unknown }) {
 function RecordViewer({ snapshotId }: { snapshotId: string }) {
   const records = useQuery(api.example.getRecords, { snapshotId });
   const [tab, setTab] = useState<"pretty" | "raw">("pretty");
+  const [copied, setCopied] = useState(false);
 
   if (!records || records.length === 0) return null;
 
   const allItems: unknown[] = [];
   records.forEach((r: any) => {
     try {
-      const parsed = JSON.parse(r.data);
-      if (Array.isArray(parsed)) allItems.push(...parsed);
-      else allItems.push(parsed);
+      const outer = JSON.parse(r.data);
+      if (Array.isArray(outer)) {
+        outer.forEach((item: unknown) => {
+          if (typeof item === "string") {
+            try { allItems.push(JSON.parse(item)); } catch { allItems.push(item); }
+          } else { allItems.push(item); }
+        });
+      } else if (typeof outer === "string") {
+        try { allItems.push(JSON.parse(outer)); } catch { allItems.push(outer); }
+      } else { allItems.push(outer); }
     } catch { allItems.push(r.data); }
   });
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(JSON.stringify(allItems, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div style={{ marginTop: "1.25rem" }}>
@@ -195,7 +221,14 @@ function RecordViewer({ snapshotId }: { snapshotId: string }) {
         <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.07em" }}>
           {allItems.length} Record{allItems.length !== 1 ? "s" : ""} Received
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <button onClick={handleCopy} style={{
+            padding: "3px 10px", borderRadius: 5, border: "1px solid #e2e8f0",
+            background: copied ? "#f0fdf4" : "#fff", color: copied ? "#059669" : "#6b7280",
+            fontSize: "0.7rem", fontWeight: 600, cursor: "pointer",
+          }}>
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
           {(["pretty", "raw"] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: "3px 10px", borderRadius: 5, border: "1px solid #e2e8f0",
@@ -206,7 +239,6 @@ function RecordViewer({ snapshotId }: { snapshotId: string }) {
           ))}
         </div>
       </div>
-
       {allItems.map((item, i) => (
         <div key={i} style={{ marginBottom: "0.75rem" }}>
           {tab === "pretty"
@@ -216,7 +248,7 @@ function RecordViewer({ snapshotId }: { snapshotId: string }) {
                 background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8,
                 padding: "1rem", fontSize: "0.72rem", fontFamily: "'JetBrains Mono', monospace",
                 whiteSpace: "pre-wrap", wordBreak: "break-all",
-                maxHeight: 400, overflowY: "auto", margin: 0, color: "#374151",
+                maxHeight: 420, overflowY: "auto", margin: 0, color: "#374151",
               }}>
                 {JSON.stringify(item, null, 2)}
               </pre>
@@ -227,7 +259,15 @@ function RecordViewer({ snapshotId }: { snapshotId: string }) {
   );
 }
 
-function SnapshotCard({ snapshot, isActive }: { snapshot: Snapshot; isActive: boolean }) {
+function SnapshotCard({
+  snapshot, isActive, defaultCollapsed, onRetrigger,
+}: {
+  snapshot: Snapshot;
+  isActive: boolean;
+  defaultCollapsed: boolean;
+  onRetrigger: (datasetId: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const statusColor = STATUS_COLOR[snapshot.status] ?? "#9ca3af";
   const elapsed = snapshot.completedAt
     ? `${((snapshot.completedAt - snapshot.triggeredAt) / 1000).toFixed(1)}s` : null;
@@ -235,26 +275,30 @@ function SnapshotCard({ snapshot, isActive }: { snapshot: Snapshot; isActive: bo
   return (
     <div style={{
       border: `1.5px solid ${isActive ? "#f97316" : "#e5e7eb"}`,
-      borderRadius: 12, overflow: "hidden", marginBottom: "1rem",
-      boxShadow: isActive ? "0 4px 24px rgba(249,115,22,0.12)" : "0 1px 4px rgba(0,0,0,0.06)",
-      transition: "all 0.3s ease",
-      background: "#fff",
+      borderRadius: 12, overflow: "hidden", marginBottom: "0.85rem",
+      boxShadow: isActive ? "0 4px 24px rgba(249,115,22,0.1)" : "0 1px 4px rgba(0,0,0,0.05)",
+      transition: "all 0.3s ease", background: "#fff",
     }}>
-      {/* Header */}
-      <div style={{
-        padding: "0.85rem 1.1rem", display: "flex", alignItems: "center",
-        justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem",
-        background: isActive ? "#fff7ed" : "#f9fafb",
-        borderBottom: "1px solid #e5e7eb",
-      }}>
+      <div
+        onClick={() => setCollapsed(!collapsed)}
+        style={{
+          padding: "0.85rem 1.1rem", display: "flex", alignItems: "center",
+          justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem",
+          background: isActive ? "#fff7ed" : "#f9fafb",
+          borderBottom: collapsed ? "none" : "1px solid #e5e7eb",
+          cursor: "pointer", userSelect: "none",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{
             width: 8, height: 8, borderRadius: "50%", background: statusColor, flexShrink: 0,
-            boxShadow: ["running", "collecting", "pending"].includes(snapshot.status) ? `0 0 0 3px ${statusColor}30` : "none",
             animation: ["running", "collecting", "pending"].includes(snapshot.status) ? "pulse 1.5s ease-in-out infinite" : "none",
           }} />
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "0.8rem", color: "#111827", fontWeight: 600 }}>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: "0.78rem", color: "#111827", fontWeight: 600 }}>
             {snapshot.snapshotId}
+          </span>
+          <span style={{ fontSize: "0.7rem", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
+            {new Date(snapshot.triggeredAt).toLocaleTimeString()}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -267,24 +311,41 @@ function SnapshotCard({ snapshot, isActive }: { snapshot: Snapshot; isActive: bo
           <span style={{ fontSize: "0.72rem", color: "#6b7280", fontFamily: "'JetBrains Mono', monospace" }}>
             {snapshot.recordCount ?? 0} records
           </span>
+          {snapshot.status === "ready" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRetrigger(snapshot.datasetId); }}
+              style={{
+                padding: "3px 10px", borderRadius: 5, border: "1px solid #e5e7eb",
+                background: "#fff", color: "#6b7280", fontSize: "0.7rem",
+                fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              ↻ Again
+            </button>
+          )}
+          <span style={{ color: "#9ca3af", fontSize: "0.8rem" }}>{collapsed ? "▼" : "▲"}</span>
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ padding: "0 1.1rem 1.1rem", background: "#fff" }}>
-        <Pipeline status={snapshot.status} />
-        <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>
-          Execution log
+      {!collapsed && (
+        <div style={{ padding: "0 1.1rem 1.1rem", background: "#fff" }}>
+          <Pipeline status={snapshot.status} />
+          <div style={{ fontSize: "0.68rem", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.5rem" }}>
+            Execution log
+          </div>
+          <LogStream snapshot={snapshot} />
+          {snapshot.status === "ready" && <RecordViewer snapshotId={snapshot.snapshotId} />}
         </div>
-        <LogStream snapshot={snapshot} />
-        {snapshot.status === "ready" && <RecordViewer snapshotId={snapshot.snapshotId} />}
-      </div>
+      )}
     </div>
   );
 }
 
-function TriggerPanel({ onTriggered }: { onTriggered: (id: string) => void }) {
-  const [datasetId, setDatasetId] = useState("gd_l1viktl72bvl7bjuj0");
+function TriggerPanel({ onTriggered, prefillDatasetId }: {
+  onTriggered: (id: string) => void;
+  prefillDatasetId?: string;
+}) {
+  const [datasetId, setDatasetId] = useState(prefillDatasetId ?? "gd_l1viktl72bvl7bjuj0");
   const [inputUrl, setInputUrl] = useState("https://www.linkedin.com/in/elad-moshe-05a90413/");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -311,11 +372,11 @@ function TriggerPanel({ onTriggered }: { onTriggered: (id: string) => void }) {
           width: 38, height: 38, borderRadius: 10,
           background: "linear-gradient(135deg, #f97316, #ea580c)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: "1.1rem", boxShadow: "0 4px 12px rgba(249,115,22,0.3)",
+          fontSize: "1.1rem", boxShadow: "0 4px 12px rgba(249,115,22,0.3)", flexShrink: 0,
         }}>⚡</div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#111827" }}>Trigger a Collection</div>
-          <div style={{ fontSize: "0.75rem", color: "#6b7280" }}>Fires an async Bright Data dataset job and watches it in real time</div>
+          <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#111827", textAlign: "left" }}>Trigger a Collection</div>
+          <div style={{ fontSize: "0.75rem", color: "#6b7280", textAlign: "left" }}>Fires an async Bright Data dataset job and watches it in real time</div>
         </div>
       </div>
 
@@ -337,7 +398,7 @@ function TriggerPanel({ onTriggered }: { onTriggered: (id: string) => void }) {
                 border: "1.5px solid #e5e7eb", background: "#f9fafb",
                 color: "#111827", fontSize: "0.8rem",
                 fontFamily: mono ? "'JetBrains Mono', monospace" : "inherit",
-                outline: "none", boxSizing: "border-box", transition: "border-color 0.15s",
+                outline: "none", boxSizing: "border-box",
               }}
             />
           </div>
@@ -373,6 +434,9 @@ function TriggerPanel({ onTriggered }: { onTriggered: (id: string) => void }) {
 export default function App() {
   const snapshots = useQuery(api.example.listSnapshots, {}) as Snapshot[] | undefined;
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [retriggerDatasetId, setRetriggerDatasetId] = useState<string | undefined>(undefined);
+
+  const sorted = snapshots ? [...snapshots].sort((a, b) => b.triggeredAt - a.triggeredAt) : [];
 
   return (
     <>
@@ -385,13 +449,13 @@ export default function App() {
         @keyframes pulse-ring { 0%,100%{box-shadow:0 0 0 4px rgba(249,115,22,0.2)} 50%{box-shadow:0 0 0 8px rgba(249,115,22,0.05)} }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
         @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        button:hover { opacity: 0.85; }
         ::-webkit-scrollbar{width:4px;height:4px} ::-webkit-scrollbar-track{background:#f1f5f9} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:2px}
       `}</style>
 
       <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
         <div style={{ maxWidth: 880, margin: "0 auto", padding: "3rem 1.5rem 4rem" }}>
 
-          {/* Header */}
           <div style={{ marginBottom: "2rem", animation: "fadeIn 0.5s ease" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "0.75rem" }}>
               <div style={{
@@ -401,15 +465,15 @@ export default function App() {
                 fontSize: "1.4rem", boxShadow: "0 6px 20px rgba(249,115,22,0.2)",
               }}>🗄</div>
               <div>
-                <h1 style={{ fontSize: "1.4rem", fontWeight: 700, color: "#111827", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-0.02em" }}>
+                <h1 style={{ fontSize: "1.4rem", fontWeight: 700, color: "#111827", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "-0.02em", textAlign: "left" }}>
                   convex-bright-data-datasets
                 </h1>
-                <div style={{ fontSize: "0.72rem", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: "0.72rem", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace", textAlign: "left" }}>
                   @sholajegede/convex-bright-data-datasets
                 </div>
               </div>
             </div>
-            <p style={{ color: "#6b7280", fontSize: "0.88rem", maxWidth: 540, lineHeight: 1.65 }}>
+            <p style={{ color: "#6b7280", fontSize: "0.88rem", maxWidth: 540, lineHeight: 1.65, textAlign: "left" }}>
               Watch how Bright Data's Datasets API integrates with Convex end to end — from trigger to webhook delivery to reactive UI updates, all in real time.
             </p>
             <div style={{
@@ -428,33 +492,47 @@ export default function App() {
                 { text: "handleWebhook()", color: "#059669" },
                 { text: "→", color: "#9ca3af" },
                 { text: "useQuery updates", color: "#059669" },
-              ].map((item, i) => (
-                <span key={i} style={{ color: item.color }}>{item.text}</span>
-              ))}
+              ].map((item, i) => <span key={i} style={{ color: item.color }}>{item.text}</span>)}
             </div>
           </div>
 
           <div style={{ animation: "fadeIn 0.4s ease 0.1s both" }}>
-            <TriggerPanel onTriggered={setActiveId} />
+            <TriggerPanel
+              key={retriggerDatasetId ?? "default"}
+              onTriggered={(id) => { setActiveId(id); setRetriggerDatasetId(undefined); }}
+              prefillDatasetId={retriggerDatasetId}
+            />
           </div>
 
-          {snapshots && snapshots.length > 0 && (
+          {sorted.length > 0 && (
             <div style={{ animation: "fadeIn 0.4s ease 0.2s both" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.85rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.85rem" }}>
                 <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                   Collection history
                 </div>
-                <div style={{ fontSize: "0.72rem", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {snapshots.length} snapshot{snapshots.length !== 1 ? "s" : ""}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: "0.72rem", color: "#9ca3af", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {sorted.length} snapshot{sorted.length !== 1 ? "s" : ""}
+                  </span>
+                  <span style={{ fontSize: "0.7rem", color: "#9ca3af" }}>· click to expand/collapse</span>
                 </div>
               </div>
-              {[...snapshots].sort((a, b) => b.triggeredAt - a.triggeredAt).map((s) => (
-                <SnapshotCard key={s.snapshotId} snapshot={s} isActive={s.snapshotId === activeId} />
+              {sorted.map((s, i) => (
+                <SnapshotCard
+                  key={s.snapshotId}
+                  snapshot={s}
+                  isActive={s.snapshotId === activeId}
+                  defaultCollapsed={i > 0 && s.snapshotId !== activeId}
+                  onRetrigger={(did) => {
+                    setRetriggerDatasetId(did);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                />
               ))}
             </div>
           )}
 
-          {(!snapshots || snapshots.length === 0) && (
+          {sorted.length === 0 && (
             <div style={{
               textAlign: "center", padding: "4rem 1rem",
               background: "#fff", border: "1.5px dashed #e5e7eb", borderRadius: 12,
