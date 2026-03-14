@@ -36,3 +36,12 @@ export const getSnapshot = query({
     });
   },
 });
+
+export const getRecords = query({
+  args: { snapshotId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.convexBrightDataDatasets.lib.getRecords, {
+      snapshotId: args.snapshotId,
+    });
+  },
+});
