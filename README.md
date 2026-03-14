@@ -1,91 +1,61 @@
-# Convex Component Template
+# @sholajegede/convex-bright-data-datasets
 
-This is a Convex component, ready to be published on npm.
+A [Convex component](https://www.convex.dev/components) that wraps [Bright Data's](https://brightdata.com) Datasets API with reactive storage. Trigger async dataset collections, receive results via webhook, and subscribe to structured records in real time via `useQuery` — no polling, no custom webhook infrastructure, no storage layer to build.
 
-To create your own component:
+[![npm version](https://badge.fury.io/js/@sholajegede%2Fconvex-bright-data-datasets.svg)](https://badge.fury.io/js/@sholajegede%2Fconvex-bright-data-datasets)
+[![Convex Component](https://www.convex.dev/components/badge/sholajegede/convex-bright-data-datasets)](https://www.convex.dev/components/sholajegede/convex-bright-data-datasets)
 
-1. Write code in src/component for your component. Component-specific tables,
-   queries, mutations, and actions go here.
-1. Write code in src/client for the Class that interfaces with the component.
-   This is the bridge your users will access to get information into and out of
-   your component
-1. Write example usage in example/convex/example.ts.
-1. Delete the text in this readme until `---` and flesh out the README.
-1. Publish to npm with `npm run alpha` or `npm run release`.
-
-To develop your component run a dev process in the example project:
-
-```sh
-npm i
-npm run dev
-```
-
-`npm i` will do the install and an initial build. `npm run dev` will start a
-file watcher to re-build the component, as well as the example project frontend
-and backend, which does codegen and installs the component.
-
-Modify the schema and index files in src/component/ to define your component.
-
-Write a client for using this component in src/client/index.ts.
-
-If you won't be adding frontend code (e.g. React components) to this component
-you can delete "./react" references in package.json and "src/react/" directory.
-If you will be adding frontend code, add a peer dependency on React in
-package.json.
-
-### Component Directory structure
-
-```
-.
-├── README.md           documentation of your component
-├── package.json        component name, version number, other metadata
-├── package-lock.json   Components are like libraries, package-lock.json
-│                       is .gitignored and ignored by consumers.
-├── src
-│   ├── component/
-│   │   ├── _generated/ Files here are generated for the component.
-│   │   ├── convex.config.ts  Name your component here and use other components
-│   │   ├── lib.ts    Define functions here and in new files in this directory
-│   │   └── schema.ts   schema specific to this component
-│   ├── client/
-│   │   └── index.ts    Code that needs to run in the app that uses the
-│   │                   component. Generally the app interacts directly with
-│   │                   the component's exposed API (src/component/*).
-│   └── react/          Code intended to be used on the frontend goes here.
-│       │               Your are free to delete this if this component
-│       │               does not provide code.
-│       └── index.ts
-├── example/            example Convex app that uses this component
-│   └── convex/
-│       ├── _generated/       Files here are generated for the example app.
-│       ├── convex.config.ts  Imports and uses this component
-│       ├── myFunctions.ts    Functions that use the component
-│       └── schema.ts         Example app schema
-└── dist/               Publishing artifacts will be created here.
-```
-
----
-
-# Convex Convex Bright Data Datasets
-
-[![npm version](https://badge.fury.io/js/@example%2Fconvex-bright-data-datasets.svg)](https://badge.fury.io/js/@example%2Fconvex-bright-data-datasets)
+Found a bug? Feature request? [File it here](https://github.com/sholajegede/convex-bright-data-datasets/issues).
 
 <!-- START: Include on https://convex.dev/components -->
 
-- [ ] What is some compelling syntax as a hook?
-- [ ] Why should you use this component?
-- [ ] Links to docs / other resources?
+## How it works
 
-Found a bug? Feature request?
-[File it here](https://github.com/sholajegede/convex-bright-data-datasets/issues).
+Without this component, getting fresh LinkedIn company data, Amazon product data, or job postings into a Convex app means building the whole pipeline yourself: trigger the snapshot, handle the webhook, parse NDJSON, store the records, expose queries. This component does all of that in one install.
+
+You call `brightDatasets.trigger()` from a Convex action. The component stores the snapshot metadata immediately, mounts a webhook handler that receives the results when Bright Data is done, parses and stores every record in component-owned tables, and updates the snapshot status to `ready`. Your frontend subscribes via `useQuery` and updates the moment data lands.
+```
+App calls trigger()
+        ↓
+Bright Data collection job starts
+        ↓
+Component stores snapshot as "pending"
+        ↓
+Bright Data POSTs results to webhook handler
+        ↓
+Component parses NDJSON, stores records, marks snapshot "ready"
+        ↓
+All useQuery subscribers notified automatically
+        ↓
+UI updates in real time
+```
+
+## Features
+
+- **Async dataset collections** — trigger any Bright Data dataset (LinkedIn, Amazon, Instagram, job postings, and 120+ more) from a Convex action
+- **Webhook receiver** — mount a single HTTP route and the component handles the rest: parsing, storage, status updates
+- **Reactive records** — subscribe to records via `useQuery`, live updates as webhook delivers batches
+- **Snapshot tracking** — every job is stored with status (`pending` → `collecting` → `digesting` → `ready`), record count, and timing
+- **Synchronous scrape** — for small single-URL jobs, get results immediately without a webhook
+- **Progress polling** — poll Bright Data for status updates and sync to Convex reactively
+- **Cancel support** — cancel a running collection and update snapshot status instantly
+- **Delivery logs** — every webhook event is logged per snapshot for debugging
+- **Discovery mode** — trigger keyword, category, or URL-based discovery collections
+- **Custom output fields** — filter which fields Bright Data returns
+
+## Prerequisites
+
+- A [Bright Data](https://brightdata.com) account
+- A dataset ID from the [Bright Data Web Scraper API](https://brightdata.com/products/web-scraper) (format: `gd_...`)
+- A Bright Data API token from your account settings
 
 ## Installation
+```sh
+npm install @sholajegede/convex-bright-data-datasets
+```
 
-Create a `convex.config.ts` file in your app's `convex/` folder and install the
-component by calling `use`:
-
+Add the component to your `convex/convex.config.ts`:
 ```ts
-// convex/convex.config.ts
 import { defineApp } from "convex/server";
 import convexBrightDataDatasets from "@sholajegede/convex-bright-data-datasets/convex.config.js";
 
@@ -95,52 +65,230 @@ app.use(convexBrightDataDatasets);
 export default app;
 ```
 
-## Usage
+## Setup
 
+**1. Instantiate the client in your Convex functions:**
 ```ts
-import { components } from "./_generated/api";
+// convex/brightDatasets.ts
+import { components } from "./_generated/api.js";
+import { BrightDatasets } from "@sholajegede/convex-bright-data-datasets";
 
-export const addComment = mutation({
-  args: { text: v.string(), targetId: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.runMutation(components.convexBrightDataDatasets.lib.add, {
-      text: args.text,
-      targetId: args.targetId,
-      userId: await getAuthUserId(ctx),
-    });
-  },
+export const brightDatasets = new BrightDatasets(components.convexBrightDataDatasets, {
+  BRIGHTDATA_API_TOKEN: process.env.BRIGHTDATA_API_TOKEN!,
 });
 ```
 
-See more example usage in [example.ts](./example/convex/example.ts).
-
-### HTTP Routes
-
-You can register HTTP routes for the component to expose HTTP endpoints:
-
+**2. Mount the webhook handler in `convex/http.ts`:**
 ```ts
 import { httpRouter } from "convex/server";
-import { registerRoutes } from "@sholajegede/convex-bright-data-datasets";
-import { components } from "./_generated/api";
+import { components } from "./_generated/api.js";
+import { createWebhookHandler } from "@sholajegede/convex-bright-data-datasets";
 
 const http = httpRouter();
 
-registerRoutes(http, components.convexBrightDataDatasets, {
-  pathPrefix: "/comments",
+http.route({
+  path: "/webhooks/brightdata",
+  method: "POST",
+  handler: createWebhookHandler(components.convexBrightDataDatasets),
 });
 
 export default http;
 ```
 
-This will expose a GET endpoint that returns the most recent comment as JSON.
-The endpoint requires a `targetId` query parameter. See
-[http.ts](./example/convex/http.ts) for a complete example.
+**3. Set your Convex environment variable:**
+```sh
+npx convex env set BRIGHTDATA_API_TOKEN your_token_here
+```
+
+Your Convex HTTP actions URL (the webhook endpoint to register in Bright Data) is:
+```
+https://<your-deployment>.convex.site/webhooks/brightdata
+```
+
+You can find this by running `npx convex dev` and looking for `VITE_CONVEX_SITE_URL` in your `.env.local`.
+
+## Usage
+
+### Trigger an async collection
+```ts
+// convex/myFunctions.ts
+import { action, query } from "./_generated/server.js";
+import { components } from "./_generated/api.js";
+import { brightDatasets } from "./brightDatasets.js";
+import { v } from "convex/values";
+
+// Trigger a LinkedIn profile collection
+export const collectProfiles = action({
+  args: { urls: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    return await brightDatasets.trigger(ctx, {
+      datasetId: "gd_l1viktl72bvl7bjuj0", // LinkedIn profiles dataset
+      inputs: args.urls.map((url) => ({ url })),
+      webhookUrl: process.env.CONVEX_SITE_URL + "/webhooks/brightdata",
+    });
+    // Returns: { snapshotId: "s_...", status: "pending" }
+  },
+});
+
+// Reactive query — subscribe to snapshot status from the frontend
+export const getSnapshot = query({
+  args: { snapshotId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.convexBrightDataDatasets.lib.getSnapshot, {
+      snapshotId: args.snapshotId,
+    });
+  },
+});
+
+// Reactive query — subscribe to records as they arrive
+export const getRecords = query({
+  args: { snapshotId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.runQuery(components.convexBrightDataDatasets.lib.getRecords, {
+      snapshotId: args.snapshotId,
+    });
+  },
+});
+```
+```tsx
+// React — subscribes reactively, re-renders when status or records update
+const snapshot = useQuery(api.myFunctions.getSnapshot, { snapshotId });
+// snapshot.status   — "pending" | "collecting" | "digesting" | "ready" | "failed" | "canceled"
+// snapshot.recordCount — number of records received so far
+
+const records = useQuery(api.myFunctions.getRecords, { snapshotId });
+// records — array of structured records from Bright Data, parsed from NDJSON
+```
+
+### Synchronous scrape (small jobs)
+```ts
+export const scrapeProfile = action({
+  args: { url: v.string() },
+  handler: async (ctx, args) => {
+    return await brightDatasets.scrape(ctx, {
+      datasetId: "gd_l1viktl72bvl7bjuj0",
+      inputs: [{ url: args.url }],
+    });
+    // Returns: { records: [...], status: "ready" }
+    // If job exceeds 1 min: { records: [], snapshotId: "s_...", status: "running" }
+  },
+});
+```
+
+### Poll for status
+```ts
+export const checkStatus = action({
+  args: { snapshotId: v.string() },
+  handler: async (ctx, args) => {
+    return await brightDatasets.pollStatus(ctx, args.snapshotId);
+    // Fetches from Bright Data, updates snapshot in Convex, returns current status
+  },
+});
+```
+
+### Cancel a collection
+```ts
+export const cancelJob = action({
+  args: { snapshotId: v.string() },
+  handler: async (ctx, args) => {
+    return await brightDatasets.cancel(ctx, args.snapshotId);
+  },
+});
+```
+
+### List all snapshots
+```ts
+export const listJobs = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.runQuery(components.convexBrightDataDatasets.lib.listSnapshots, {
+      limit: 20,
+    });
+  },
+});
+```
+
+### Discovery mode
+```ts
+// Discover Amazon products by keyword
+export const discoverProducts = action({
+  args: { keywords: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    return await brightDatasets.trigger(ctx, {
+      datasetId: "gd_l7q7dkf244hwjntr0",
+      inputs: args.keywords.map((keyword) => ({ keyword })),
+      discoveryMode: "discover_new",
+      discoverBy: "keyword",
+      limitPerInput: 10,
+      webhookUrl: process.env.CONVEX_SITE_URL + "/webhooks/brightdata",
+    });
+  },
+});
+```
+
+## API
+
+### `BrightDatasets` class
+
+| Method | Description |
+|--------|-------------|
+| `trigger(ctx, opts)` | Trigger an async Bright Data dataset collection. Returns `{ snapshotId, status }` immediately. |
+| `scrape(ctx, opts)` | Synchronous scrape for small single-URL jobs. Falls back to snapshot polling if job exceeds 1 minute. |
+| `pollStatus(ctx, snapshotId)` | Poll Bright Data for snapshot status and sync to Convex. |
+| `cancel(ctx, snapshotId)` | Cancel a running collection. |
+| `getSnapshot(ctx, snapshotId)` | Get snapshot metadata. Reactive via `useQuery`. |
+| `listSnapshots(ctx, opts?)` | List snapshots, optionally filtered by `datasetId`, `status`, or `limit`. Reactive. |
+| `getRecords(ctx, snapshotId, limit?)` | Get stored records for a snapshot. Reactive — updates as webhook delivers data. |
+| `getDeliveryLogs(ctx, snapshotId)` | Get webhook delivery events for debugging. Reactive. |
+
+### `createWebhookHandler(component)`
+
+Creates the HTTP action handler for receiving Bright Data webhook deliveries. Mount in `convex/http.ts`.
+
+### `trigger` options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `datasetId` | `string` | Bright Data dataset ID (e.g. `gd_l1viktl72bvl7bjuj0`) |
+| `inputs` | `object[]` | Array of input objects (e.g. `[{ url: "..." }]`) |
+| `format` | `string?` | Output format: `"json"` \| `"ndjson"` \| `"csv"` (default: `"json"`) |
+| `webhookUrl` | `string?` | Webhook URL where Bright Data delivers results |
+| `notifyUrl` | `string?` | Notification URL called on completion with `snapshot_id` and `status` |
+| `discoveryMode` | `string?` | Set to `"discover_new"` to enable discovery |
+| `discoverBy` | `string?` | Discovery method: `"keyword"` \| `"category_url"` \| `"best_sellers_url"` \| `"location"` |
+| `limitPerInput` | `number?` | Max results per input (discovery mode) |
+| `totalLimit` | `number?` | Max total results |
+| `customOutputFields` | `string?` | Pipe-separated fields to return (e.g. `"url\|name\|price"`) |
+| `includeErrors` | `boolean?` | Include error records in results (default: `true`) |
+
+### Snapshot status lifecycle
+```
+pending → collecting → digesting → ready
+                                 → failed
+                                 → canceled
+```
+
+### Reactive queries (call via `ctx.runQuery`)
+
+| Function | Args | Returns |
+|----------|------|---------|
+| `components.convexBrightDataDatasets.lib.getSnapshot` | `{ snapshotId }` | Snapshot or `null` |
+| `components.convexBrightDataDatasets.lib.listSnapshots` | `{ datasetId?, status?, limit? }` | Array of snapshots |
+| `components.convexBrightDataDatasets.lib.getRecords` | `{ snapshotId, limit? }` | Array of records |
+| `components.convexBrightDataDatasets.lib.getDeliveryLogs` | `{ snapshotId }` | Array of delivery events |
 
 <!-- END: Include on https://convex.dev/components -->
 
-Run the example:
+## Example app
 
+See [`example/`](./example) for a working Vite + React demo showing async dataset triggering, live snapshot status tracking, and reactive record display.
+
+## Development
 ```sh
 npm i
 npm run dev
 ```
+
+## License
+
+Apache-2.0
