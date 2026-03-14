@@ -1,7 +1,10 @@
 {
   "name": "@sholajegede/convex-bright-data-datasets",
   "description": "A convex bright data datasets component for Convex.",
-  "repository": "github:sholajegede/convex-bright-data-datasets",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sholajegede/convex-bright-data-datasets.git"
+  },
   "homepage": "https://github.com/sholajegede/convex-bright-data-datasets#readme",
   "bugs": {
     "url": "https://github.com/sholajegede/convex-bright-data-datasets/issues"

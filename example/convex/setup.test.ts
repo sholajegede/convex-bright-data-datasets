@@ -1,16 +1,18 @@
 /// <reference types="vite/client" />
-import { test } from "vitest";
 import { convexTest } from "convex-test";
+import { expect, test } from "vitest";
 import schema from "./schema.js";
-import component from "@sholajegede/convex-bright-data-datasets/test";
+import componentSchema from "../../src/component/schema.js";
 
-const modules = import.meta.glob("./**/*.*s");
-// When users want to write tests that use your component, they need to
-// explicitly register it with its schema and modules.
+const modules = import.meta.glob("./**/*.ts");
+const componentModules = import.meta.glob("../../src/component/**/*.ts");
+
 export function initConvexTest() {
   const t = convexTest(schema, modules);
-  component.register(t);
+  t.registerComponent("convexBrightDataDatasets", componentSchema, componentModules);
   return t;
 }
 
-test("setup", () => {});
+test("setup", () => {
+  expect(initConvexTest()).toBeDefined();
+});

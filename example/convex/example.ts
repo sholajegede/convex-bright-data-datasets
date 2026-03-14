@@ -16,6 +16,7 @@ export const triggerCollection = action({
     return await brightDatasets.trigger(ctx, {
       datasetId: args.datasetId,
       inputs: args.inputs,
+      webhookUrl: `${process.env.CONVEX_SITE_URL}/webhooks/brightdata`,
     });
   },
 });
