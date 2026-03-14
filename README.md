@@ -1,6 +1,6 @@
 # @sholajegede/convex-bright-data-datasets
 
-A [Convex component](https://www.convex.dev/components) that wraps [Bright Data's](https://brightdata.com) Datasets API with reactive storage. Trigger async dataset collections, receive results via webhook, and subscribe to structured records in real time via `useQuery` — no polling, no custom webhook infrastructure, no storage layer to build.
+A [Convex component](https://www.convex.dev/components) that wraps [Bright Data's](https://brightdata.com) Datasets API with reactive storage. Trigger async collections for LinkedIn profiles, Amazon products, Instagram posts, job listings, Airbnb, Zillow, Google Maps, and 120+ other datasets — receive results via webhook, and subscribe to structured records in real time via `useQuery`. No polling, no custom webhook infrastructure, no storage layer to build.
 
 [![npm version](https://badge.fury.io/js/@sholajegede%2Fconvex-bright-data-datasets.svg)](https://badge.fury.io/js/@sholajegede%2Fconvex-bright-data-datasets)
 [![Convex Component](https://www.convex.dev/components/badge/sholajegede/convex-bright-data-datasets)](https://www.convex.dev/components/sholajegede/convex-bright-data-datasets)
